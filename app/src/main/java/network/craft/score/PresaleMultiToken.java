@@ -21,6 +21,7 @@ import network.craft.score.util.EnumerableSet;
 import score.Address;
 import score.Context;
 import score.VarDB;
+import score.ArrayDB;
 import score.annotation.EventLog;
 import score.annotation.External;
 import score.annotation.Payable;
@@ -33,8 +34,7 @@ public class PresaleMultiToken extends IRC31Basic {
     private static final BigInteger EXA = BigInteger.valueOf(1_000_000_000_000_000_000L);
     private static final Address CFT_ESCROW_ADDRESS = Address.fromString("cx9c4698411c6d9a780f605685153431dcda04609f");
     private static final Address CRAFT_TREASURY = Address.fromString("hxde4d8d2cff324c85565778b7c5baf2acf20b5522");
-    private final String TOBEREVEALED_URI;
-    private final BigInteger MAX_PRESALES;
+
     // presale states
     private final VarDB<BigInteger> presalePrice = Context.newVarDB("presale_price", BigInteger.class);
     private final VarDB<Boolean> presaleOpened = Context.newVarDB("presale_opened", Boolean.class);
@@ -44,14 +44,11 @@ public class PresaleMultiToken extends IRC31Basic {
 
     private final VarDB<BigInteger> mintLimit = Context.newVarDB("mint_limit", BigInteger.class);
     private final DictDB<Address,BigInteger> mintCount = Context.newDictDB("mint_count", BigInteger.class);
-    private final VarDB<BigInteger> presaleLatestBlock = Context.newVarDB("presale_latest_block", BigInteger.class);
     private final VarDB<Boolean> requireWhitelist = Context.newVarDB("require_whitelist", Boolean.class);
     private final EnumerableSet<Address> whitelist = new EnumerableSet<>("whitelist", Address.class);
 
-    public PresaleMultiToken(String TOBEREVEALED_URI, int MAX_PRESALES) {
-        this.TOBEREVEALED_URI = TOBEREVEALED_URI;
-        this.MAX_PRESALES = BigInteger.valueOf(MAX_PRESALES);
-    }
+    private final ArrayDB<String> allHashes = Context.newArrayDB("all_hashes", String.class);
+    private final ArrayDB<String> mintedHashes = Context.newArrayDB("minted_hashes", String.class);
 
     @External(readonly=true)
     public String name() {
@@ -67,16 +64,6 @@ public class PresaleMultiToken extends IRC31Basic {
     @External(readonly=true)
     public boolean presaleOpened() {
         return presaleOpened.getOrDefault(false);
-    }
-
-    @External(readonly=true)
-    public String unrevealedURI() {
-        return this.TOBEREVEALED_URI;
-    }
-
-    @External(readonly=true)
-    public BigInteger maxPresale() {
-        return this.MAX_PRESALES;
     }
 
     @External(readonly=true)
@@ -164,6 +151,22 @@ public class PresaleMultiToken extends IRC31Basic {
         return treasury.getOrDefault(Context.getOwner());
     }
 
+
+    @External(readonly=true)
+    public int getHashesSize() {
+        return this.allHashes.size();
+    }
+
+    @External(readonly=true)
+    public List<String> getMintedHashes() {
+        int len = this.mintedHashes.size();
+        String[] array = new String[len];
+        for (int i = 0; i < len; i++) {
+            array[i] = this.mintedHashes.get(i);
+        }
+        return List.of(array);
+    }
+
     @External
     public void setTreasury(Address _address) {
         checkOwnerOrThrow();
@@ -176,9 +179,10 @@ public class PresaleMultiToken extends IRC31Basic {
         Context.require(!presaleOpened(), "Presale already opened");
         // presale price should be at least one ICX
         Context.require(presalePrice().compareTo(EXA) >= 0, "Presale price is not properly set");
-        if (presaleId().compareTo(MAX_PRESALES) < 0) {
-            presaleOpened.set(true);
-        }
+        BigInteger maxSales = BigInteger.valueOf(this.allHashes.size());
+            Context.require(presaleId().compareTo(maxSales) < 0, "All items have been minted");
+        Context.require(maxSales.signum() == 1, "No hash in contract");
+        presaleOpened.set(true);
     }
 
     @External
@@ -210,9 +214,60 @@ public class PresaleMultiToken extends IRC31Basic {
         presaleOpened.set(false);
     }
 
-    @External(readonly=true)
-    public BigInteger presaleLatestBlock() {
-        return presaleLatestBlock.getOrDefault(BigInteger.ZERO);
+    @External
+    public void setHashes(String _data) {
+        checkOwnerOrThrow();
+        var db = this.allHashes;
+        int len = db.size();
+        String[] hashes = new String[len];
+        for (int i = 0; i < len; i++) {
+            hashes[i] = db.get(i);
+        }
+        var hashesList = List.of(hashes);
+
+        int index = 0;
+        int step = 46;
+        while (index < _data.length()) {
+            String hash = _data.substring(index, Math.min(index + step, _data.length()));
+            if (!hashesList.contains(hash))
+                db.add(hash);
+            index += step;
+        }
+    }
+
+
+    private int getHashIndex() {
+        ArrayDB<String> hashesDB = this.allHashes;
+        int hashesSize = hashesDB.size();
+        int mintedSize = this.mintedHashes.size();
+
+        //create a new list containing only available hashes
+        int availableSize = hashesSize - mintedSize;
+        int[] availableHashes = new int[availableSize];
+        int position = 0;
+        for (int i = 0; i < hashesSize; i++) {
+            String hash = hashesDB.get(i);
+            if (!(hash.equals("minted"))) {
+                availableHashes[position] = i;
+                position++;
+            }
+        }
+
+        //get a random hash from available hashes
+        int randomIdx = getRandomIndex(availableSize);
+        if (randomIdx == availableSize) randomIdx = availableSize - 1;
+        for (int i = 0; i < availableSize; i++) {
+            if (randomIdx == i) {
+                return  availableHashes[i];
+            }
+        }
+        return -1;
+    }
+
+    private int getRandomIndex(int rndMax) {
+        int rndLast = (int) (Context.getTransactionTimestamp() % rndMax);
+        rndLast = (rndLast * 32719 + 3) % 32749;
+        return rndLast % rndMax;
     }
 
     @Payable
@@ -226,22 +281,28 @@ public class PresaleMultiToken extends IRC31Basic {
             Context.require(mintCount(Context.getCaller()).add(_amount).compareTo(mintLimit()) < 0, "Mint limit");
         }
         Context.require(_amount.signum() > 0, "Amount should be positive");
-        Context.require(presaleId().add(_amount).compareTo(MAX_PRESALES) <= 0, "Not enough items left");
+        BigInteger maxSales = BigInteger.valueOf(this.allHashes.size());
+        Context.require(presaleId().add(_amount).compareTo(maxSales) <= 0, "Not enough items left");
         Context.require(Context.getValue().equals(presalePrice().multiply(_amount)), "Invalid price");
 
         int count = _amount.intValue();
         while (--count >= 0) {
-            _presaleMint();
+            int index = getHashIndex();
+            if (index >= 0){
+                _presaleMint(index);
+            }
         }
     }
 
-    private void _presaleMint() {
-        var newId = presaleId().add(BigInteger.ONE);
-        Context.require(newId.compareTo(MAX_PRESALES) <= 0, "All items have been minted");
 
+    private void _presaleMint(int _index) {
+        var newId = presaleId().add(BigInteger.ONE);
+        BigInteger maxSales = BigInteger.valueOf(this.allHashes.size());
+        Context.require(newId.compareTo(maxSales) <= 0, "All items have been minted");
+        String hash = this.allHashes.get(_index);
         final Address caller = Context.getCaller();
         super._mint(caller, newId, BigInteger.ONE);
-        super._setTokenURI(newId, TOBEREVEALED_URI);
+        super._setTokenURI(newId, hash);
         presaleId.set(newId);
 
         var serviceFee = presalePrice().multiply(BigInteger.valueOf(100)).divide(BigInteger.valueOf(10000));
@@ -250,11 +311,11 @@ public class PresaleMultiToken extends IRC31Basic {
         Context.transfer(this.CRAFT_TREASURY, serviceFee);
         // CRAFT PRESALE FEATURES LOGIC HERE
         Context.call(netPrice, craftEscrow(), "presaleTxRouter", caller, treasury());
-
-        presaleLatestBlock.set(BigInteger.valueOf(Context.getBlockHeight()));
+        this.mintedHashes.add(hash);
+        this.allHashes.set(_index, "minted");
         PresalePurchase(caller, newId);
 
-        if (newId.equals(MAX_PRESALES)) {
+        if (newId.equals(maxSales)) {
             _closePresale();
         }
     }
@@ -264,47 +325,34 @@ public class PresaleMultiToken extends IRC31Basic {
         checkOwnerOrThrow();
         Context.require(presaleOpened(), "Presale is closed");
         Context.require(_amount.signum() > 0, "Amount should be positive");
-        Context.require(presaleId().add(_amount).compareTo(MAX_PRESALES) <= 0, "Not enough items left");
+        BigInteger maxSales = BigInteger.valueOf(this.allHashes.size());
+        Context.require(presaleId().add(_amount).compareTo(maxSales) <= 0, "Not enough items left");
 
         int count = _amount.intValue();
         while (--count >= 0) {
-            _freeMint(_address);
+            int index = getHashIndex();
+            if (index >= 0){
+                _freeMint(_address,index);
+            }
         }
     }
 
-    private void _freeMint(Address _address) {
+    private void _freeMint(Address _address, int _index) {
         var newId = presaleId().add(BigInteger.ONE);
-        Context.require(newId.compareTo(MAX_PRESALES) <= 0, "All items have been minted");
-
+        BigInteger maxSales = BigInteger.valueOf(this.allHashes.size());
+        Context.require(newId.compareTo(maxSales) <= 0, "All items have been minted");
+        String hash = this.allHashes.get(_index);
         super._mint(_address, newId, BigInteger.ONE);
-        super._setTokenURI(newId, TOBEREVEALED_URI);
+        super._setTokenURI(newId, hash);
         presaleId.set(newId);
+        this.mintedHashes.add(hash);
+        this.allHashes.set(_index, "minted");
 
         PresalePurchase(_address, newId);
 
-        if (newId.equals(MAX_PRESALES)) {
+        if (newId.equals(maxSales)) {
             _closePresale();
         }
-    }
-
-    @External
-    public void nftReveal(BigInteger _id, String _uri) {
-        checkOwnerOrThrow();
-        Context.require(!presaleOpened(), "Presale should be closed");
-        Context.require(presaleId().equals(MAX_PRESALES), "All items should be minted");
-        super._setTokenURI(_id, _uri);
-    }
-
-    @External
-    public void mintRemaining() {
-        checkOwnerOrThrow();
-        Context.require(!presaleOpened(), "Presale should be closed");
-        var newId = presaleId().add(BigInteger.ONE);
-        Context.require(newId.compareTo(MAX_PRESALES) <= 0, "All items have been minted");
-
-        super._mint(treasury(), newId, BigInteger.ONE);
-        super._setTokenURI(newId, TOBEREVEALED_URI);
-        presaleId.set(newId);
     }
 
     @EventLog(indexed=1)
