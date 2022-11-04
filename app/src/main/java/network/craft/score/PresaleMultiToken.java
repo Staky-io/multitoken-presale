@@ -239,7 +239,7 @@ public class PresaleMultiToken extends IRC31Basic {
     private int getHashIndex() {
         ArrayDB<String> hashesDB = this.allHashes;
         int hashesSize = hashesDB.size();
-        int mintedSize = this.mintedHashes.size();
+        int mintedSize = presaleId().intValue();
 
         //create a new list containing only available hashes
         int availableSize = hashesSize - mintedSize;
