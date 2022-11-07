@@ -355,6 +355,13 @@ public class PresaleMultiToken extends IRC31Basic {
         }
     }
 
+    @External
+    public void uriSet(BigInteger _id, String _uri) {
+        checkOwnerOrThrow();
+        Context.require(!presaleOpened(), "Presale should be closed");
+        super._setTokenURI(_id, _uri);
+    }
+
     @EventLog(indexed=1)
     public void PresalePurchase(Address buyer, BigInteger newId) {}
 }
