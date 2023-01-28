@@ -117,6 +117,11 @@ public class PresaleMultiToken extends IRC31Basic {
         }
     }
 
+    @External(readonly=true)
+    public BigInteger maxPresale() {
+        return BigInteger.valueOf(this.allHashes.size());
+    }
+
     @External
     public void removeWhitelist(Address[] _adr) {
         checkOwnerOrThrow();
