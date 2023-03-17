@@ -223,7 +223,7 @@ public class PresaleMultiToken extends IRC31Basic {
     public void setHashes(String _data, int _step) {
         checkOwnerOrThrow();
         // Ensure that _data size is correct
-        Context.require((_data.length() % 59 == 0), "Hash size not matching step length");
+        Context.require((_data.length() % _step == 0), "Hash size not matching step length");
         var db = this.allHashes;
         int len = db.size();
         String[] hashes = new String[len];
