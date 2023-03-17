@@ -220,8 +220,10 @@ public class PresaleMultiToken extends IRC31Basic {
     }
 
     @External
-    public void setHashes(String _data) {
+    public void setHashes(String _data, int _step) {
         checkOwnerOrThrow();
+        // Ensure that _data size is correct
+        Context.require((_data.length() % 59 == 0), "Hash size not matching step length");
         var db = this.allHashes;
         int len = db.size();
         String[] hashes = new String[len];
@@ -231,12 +233,12 @@ public class PresaleMultiToken extends IRC31Basic {
         var hashesList = List.of(hashes);
 
         int index = 0;
-        int step = 46;
+
         while (index < _data.length()) {
-            String hash = _data.substring(index, Math.min(index + step, _data.length()));
+            String hash = _data.substring(index, Math.min(index + _step, _data.length()));
             if (!hashesList.contains(hash))
                 db.add(hash);
-            index += step;
+            index += _step;
         }
     }
 
