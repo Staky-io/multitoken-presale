@@ -33,7 +33,6 @@ import score.DictDB;
 public class PresaleMultiToken extends IRC31Basic {
     private static final BigInteger EXA = BigInteger.valueOf(1_000_000_000_000_000_000L);
     private static final Address CFT_ESCROW_ADDRESS = Address.fromString("cx9c4698411c6d9a780f605685153431dcda04609f");
-    private final String TOBEREVEALED_URI;
     private final BigInteger MAX_PRESALES;
     // presale states
     private final VarDB<BigInteger> presalePrice = Context.newVarDB("presale_price", BigInteger.class);
@@ -51,8 +50,7 @@ public class PresaleMultiToken extends IRC31Basic {
     private final VarDB<String> baseUri = Context.newVarDB("base_uri", String.class);
     private final EnumerableSet<Address> whitelist = new EnumerableSet<>("whitelist", Address.class);
 
-    public PresaleMultiToken(String TOBEREVEALED_URI, int MAX_PRESALES, String BASE_URI, @Optional BigInteger _mintLimit, @Optional Boolean _wlEnabled, @Optional BigInteger _wlMintLimit, @Optional BigInteger _wlPrice) {
-        this.TOBEREVEALED_URI = TOBEREVEALED_URI;
+    public PresaleMultiToken(int MAX_PRESALES, String BASE_URI, @Optional BigInteger _mintLimit, @Optional Boolean _wlEnabled, @Optional BigInteger _wlMintLimit, @Optional BigInteger _wlPrice) {
         this.MAX_PRESALES = BigInteger.valueOf(MAX_PRESALES);
         baseUri.set(BASE_URI);
         if (_mintLimit.compareTo(BigInteger.ZERO) > 0){
@@ -83,11 +81,6 @@ public class PresaleMultiToken extends IRC31Basic {
     @External(readonly=true)
     public boolean presaleOpened() {
         return presaleOpened.getOrDefault(false);
-    }
-
-    @External(readonly=true)
-    public String unrevealedURI() {
-        return this.TOBEREVEALED_URI;
     }
 
     @External(readonly=true)
@@ -303,7 +296,7 @@ public class PresaleMultiToken extends IRC31Basic {
 
         final Address caller = Context.getCaller();
         super._mint(caller, newId, BigInteger.ONE);
-        super._setTokenURI(newId, TOBEREVEALED_URI);
+        super._setTokenURI(newId, baseUri.get()+newId.toString());
         presaleId.set(newId);
 
         Context.call(presalePrice(), craftEscrow(), "presaleTxRouter", caller, treasury());
@@ -334,7 +327,7 @@ public class PresaleMultiToken extends IRC31Basic {
         Context.require(newId.compareTo(MAX_PRESALES) <= 0, "All items have been minted");
 
         super._mint(_address, newId, BigInteger.ONE);
-        super._setTokenURI(newId, TOBEREVEALED_URI);
+        super._setTokenURI(newId, baseUri.get()+newId.toString());
         presaleId.set(newId);
 
         PresalePurchase(_address, newId);
@@ -344,10 +337,6 @@ public class PresaleMultiToken extends IRC31Basic {
         }
     }
 
-   
-
-
-
     @External
     public void mintRemaining() {
         checkOwnerOrThrow();
@@ -356,7 +345,7 @@ public class PresaleMultiToken extends IRC31Basic {
         Context.require(newId.compareTo(MAX_PRESALES) <= 0, "All items have been minted");
 
         super._mint(treasury(), newId, BigInteger.ONE);
-        super._setTokenURI(newId, TOBEREVEALED_URI);
+        super._setTokenURI(newId, baseUri.get()+newId.toString());
         presaleId.set(newId);
     }
 
