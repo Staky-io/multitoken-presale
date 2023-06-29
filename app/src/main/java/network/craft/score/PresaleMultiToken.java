@@ -23,6 +23,7 @@ import score.Context;
 import score.VarDB;
 import score.annotation.EventLog;
 import score.annotation.External;
+import score.annotation.Optional;
 import score.annotation.Payable;
 
 import java.math.BigInteger;
@@ -36,22 +37,36 @@ public class PresaleMultiToken extends IRC31Basic {
     private final BigInteger MAX_PRESALES;
     // presale states
     private final VarDB<BigInteger> presalePrice = Context.newVarDB("presale_price", BigInteger.class);
+    private final VarDB<BigInteger> wlPresalePrice = Context.newVarDB("wl_presale_price", BigInteger.class);
     private final VarDB<Boolean> presaleOpened = Context.newVarDB("presale_opened", Boolean.class);
     private final VarDB<BigInteger> presaleId = Context.newVarDB("presale_id", BigInteger.class);
     private final VarDB<Address> craftEscrow = Context.newVarDB("craft_escrow_address", Address.class);
     private final VarDB<Address> treasury = Context.newVarDB("treasury_address", Address.class);
 
     private final VarDB<BigInteger> mintLimit = Context.newVarDB("mint_limit", BigInteger.class);
+    private final VarDB<BigInteger> wlMintLimit = Context.newVarDB("wl_mint_limit", BigInteger.class);
     private final DictDB<Address,BigInteger> mintCount = Context.newDictDB("mint_count", BigInteger.class);
     private final VarDB<BigInteger> presaleLatestBlock = Context.newVarDB("presale_latest_block", BigInteger.class);
     private final VarDB<Boolean> requireWhitelist = Context.newVarDB("require_whitelist", Boolean.class);
     private final VarDB<String> baseUri = Context.newVarDB("base_uri", String.class);
     private final EnumerableSet<Address> whitelist = new EnumerableSet<>("whitelist", Address.class);
 
-    public PresaleMultiToken(String TOBEREVEALED_URI, int MAX_PRESALES, String BASE_URI) {
+    public PresaleMultiToken(String TOBEREVEALED_URI, int MAX_PRESALES, String BASE_URI, @Optional BigInteger _mintLimit, @Optional Boolean _wlEnabled, @Optional BigInteger _wlMintLimit, @Optional BigInteger _wlPrice) {
         this.TOBEREVEALED_URI = TOBEREVEALED_URI;
         this.MAX_PRESALES = BigInteger.valueOf(MAX_PRESALES);
         baseUri.set(BASE_URI);
+        if (_mintLimit.compareTo(BigInteger.ZERO) > 0){
+            mintLimit.set(_mintLimit);
+        }
+        if (_wlEnabled == true){
+            requireWhitelist.set(true);
+            if (_wlMintLimit.compareTo(BigInteger.ZERO) > 0){
+                wlMintLimit.set(_wlMintLimit);
+            }
+            if (_wlPrice.compareTo(BigInteger.ZERO) > 0){
+                wlPresalePrice.set(_wlPrice);
+            }
+        }
     }
 
     @External(readonly=true)
@@ -96,6 +111,11 @@ public class PresaleMultiToken extends IRC31Basic {
     }
 
     @External(readonly=true)
+    public BigInteger wlMintLimit() {
+        return wlMintLimit.getOrDefault(BigInteger.ZERO);
+    }
+
+    @External(readonly=true)
     public BigInteger mintCount(Address _address) {
         return mintCount.getOrDefault(_address, BigInteger.ZERO);
     }
@@ -111,7 +131,12 @@ public class PresaleMultiToken extends IRC31Basic {
     }
 
     @External(readonly=true)
-    public BigInteger baseUri() {
+    public BigInteger wlPresalePrice() {
+        return wlPresalePrice.getOrDefault(BigInteger.ZERO);
+    }
+
+    @External(readonly=true)
+    public String baseUri() {
         return baseUri.get();
     }
 
@@ -123,15 +148,28 @@ public class PresaleMultiToken extends IRC31Basic {
     }
 
     @External
+    public void setWlPresalePrice(BigInteger _price) {
+        checkOwnerOrThrow();
+        Context.require(!presaleOpened(), "Price cannot be changed during presale");
+        wlPresalePrice.set(_price);
+    }
+
+    @External
     public void setMintLimit(BigInteger _count) {
         checkOwnerOrThrow();
         mintLimit.set(_count);
     }
 
     @External
+    public void setWlMintLimit(BigInteger _count) {
+        checkOwnerOrThrow();
+        wlMintLimit.set(_count);
+    }
+
+    @External
     public void setBaseUri(String _baseUri) {
         checkOwnerOrThrow();
-        mintLimit.set(_baseUri);
+        baseUri.set(_baseUri);
     }
 
     @External
@@ -174,6 +212,11 @@ public class PresaleMultiToken extends IRC31Basic {
     @External(readonly=true)
     public Address treasury() {
         return treasury.getOrDefault(Context.getOwner());
+    }
+
+    @External(readonly=true)
+    public String tokenURI(BigInteger _id) {
+        return baseUri.get()+_id.toString();
     }
 
     @External
@@ -234,12 +277,19 @@ public class PresaleMultiToken extends IRC31Basic {
         if (requireWhitelist()) {
             Context.require(whitelist.contains(Context.getCaller()), "Address not whitelisted");
         }
-        if(mintLimit().compareTo(BigInteger.ZERO) > 0){
+        if (wlMintLimit().compareTo(BigInteger.ZERO) > 0 && whitelist.contains(Context.getCaller())){
+            Context.require(mintCount(Context.getCaller()).add(_amount).compareTo(wlMintLimit()) < 0, "Mint limit");
+        }
+        else if (mintLimit().compareTo(BigInteger.ZERO) > 0){
             Context.require(mintCount(Context.getCaller()).add(_amount).compareTo(mintLimit()) < 0, "Mint limit");
         }
         Context.require(_amount.signum() > 0, "Amount should be positive");
         Context.require(presaleId().add(_amount).compareTo(MAX_PRESALES) <= 0, "Not enough items left");
-        Context.require(Context.getValue().equals(presalePrice().multiply(_amount)), "Invalid price");
+        if (whitelist.contains(Context.getCaller()) && wlPresalePrice().compareTo(BigInteger.ZERO) > 0){
+            Context.require(Context.getValue().equals(wlPresalePrice().multiply(_amount)), "Invalid price");
+        } else {  
+            Context.require(Context.getValue().equals(presalePrice().multiply(_amount)), "Invalid price");
+        }
 
         int count = _amount.intValue();
         while (--count >= 0) {
@@ -294,13 +344,9 @@ public class PresaleMultiToken extends IRC31Basic {
         }
     }
 
-    @External
-    public void nftReveal(BigInteger _id, String _uri) {
-        checkOwnerOrThrow();
-        Context.require(!presaleOpened(), "Presale should be closed");
-        Context.require(presaleId().equals(MAX_PRESALES), "All items should be minted");
-        super._setTokenURI(_id, _uri);
-    }
+   
+
+
 
     @External
     public void mintRemaining() {
