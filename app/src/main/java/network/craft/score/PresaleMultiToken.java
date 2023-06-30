@@ -34,6 +34,7 @@ public class PresaleMultiToken extends IRC31Basic {
     private static final BigInteger EXA = BigInteger.valueOf(1_000_000_000_000_000_000L);
     private static final Address CFT_ESCROW_ADDRESS = Address.fromString("cx9c4698411c6d9a780f605685153431dcda04609f");
     private final BigInteger MAX_PRESALES;
+    private final String NAME;
     // presale states
     private final VarDB<BigInteger> presalePrice = Context.newVarDB("presale_price", BigInteger.class);
     private final VarDB<BigInteger> wlPresalePrice = Context.newVarDB("wl_presale_price", BigInteger.class);
@@ -48,28 +49,23 @@ public class PresaleMultiToken extends IRC31Basic {
     private final VarDB<BigInteger> presaleLatestBlock = Context.newVarDB("presale_latest_block", BigInteger.class);
     private final VarDB<Boolean> requireWhitelist = Context.newVarDB("require_whitelist", Boolean.class);
     private final VarDB<String> baseUri = Context.newVarDB("base_uri", String.class);
+    private final VarDB<String> fileExtension = Context.newVarDB("file_extension", String.class);
     private final EnumerableSet<Address> whitelist = new EnumerableSet<>("whitelist", Address.class);
 
-    public PresaleMultiToken(int MAX_PRESALES, String BASE_URI, @Optional BigInteger _mintLimit, @Optional Boolean _wlEnabled, @Optional BigInteger _wlMintLimit, @Optional BigInteger _wlPrice) {
+    public PresaleMultiToken(String NAME, int MAX_PRESALES, String BASE_URI, BigInteger _presalePrice, BigInteger _mintLimit, Boolean _wlEnabled, BigInteger _wlMintLimit, BigInteger _wlPrice) {
+        this.NAME = NAME;
         this.MAX_PRESALES = BigInteger.valueOf(MAX_PRESALES);
         baseUri.set(BASE_URI);
-        if (_mintLimit.compareTo(BigInteger.ZERO) > 0){
-            mintLimit.set(_mintLimit);
-        }
-        if (_wlEnabled == true){
-            requireWhitelist.set(true);
-            if (_wlMintLimit.compareTo(BigInteger.ZERO) > 0){
-                wlMintLimit.set(_wlMintLimit);
-            }
-            if (_wlPrice.compareTo(BigInteger.ZERO) > 0){
-                wlPresalePrice.set(_wlPrice);
-            }
-        }
+        mintLimit.set(_mintLimit);
+        presalePrice.set(_presalePrice);
+        requireWhitelist.set(_wlEnabled);
+        wlMintLimit.set(_wlMintLimit);
+        wlPresalePrice.set(_wlPrice);
     }
 
     @External(readonly=true)
     public String name() {
-        return "PresaleMultiToken";
+        return this.NAME;
     }
 
     private void checkOwnerOrThrow() {
@@ -80,7 +76,7 @@ public class PresaleMultiToken extends IRC31Basic {
 
     @External(readonly=true)
     public boolean presaleOpened() {
-        return presaleOpened.getOrDefault(false);
+        return presaleOpened.getOrDefault(true);
     }
 
     @External(readonly=true)
@@ -133,6 +129,11 @@ public class PresaleMultiToken extends IRC31Basic {
         return baseUri.get();
     }
 
+    @External(readonly=true)
+    public String fileExtension() {
+        return fileExtension.getOrDefault(".json");
+    }
+
     @External
     public void setPresalePrice(BigInteger _price) {
         checkOwnerOrThrow();
@@ -163,6 +164,12 @@ public class PresaleMultiToken extends IRC31Basic {
     public void setBaseUri(String _baseUri) {
         checkOwnerOrThrow();
         baseUri.set(_baseUri);
+    }
+
+    @External
+    public void setFileExtension(String _fileExtension) {
+        checkOwnerOrThrow();
+        fileExtension.set(_fileExtension);
     }
 
     @External
@@ -209,7 +216,7 @@ public class PresaleMultiToken extends IRC31Basic {
 
     @External(readonly=true)
     public String tokenURI(BigInteger _id) {
-        return baseUri.get()+_id.toString();
+        return baseUri.get()+_id.toString()+fileExtension.get();
     }
 
     @External
@@ -296,7 +303,7 @@ public class PresaleMultiToken extends IRC31Basic {
 
         final Address caller = Context.getCaller();
         super._mint(caller, newId, BigInteger.ONE);
-        super._setTokenURI(newId, baseUri.get()+newId.toString());
+        super._setTokenURI(newId, baseUri.get()+newId.toString()+fileExtension.get());
         presaleId.set(newId);
 
         Context.call(presalePrice(), craftEscrow(), "presaleTxRouter", caller, treasury());
@@ -327,7 +334,7 @@ public class PresaleMultiToken extends IRC31Basic {
         Context.require(newId.compareTo(MAX_PRESALES) <= 0, "All items have been minted");
 
         super._mint(_address, newId, BigInteger.ONE);
-        super._setTokenURI(newId, baseUri.get()+newId.toString());
+        super._setTokenURI(newId, baseUri.get()+newId.toString()+fileExtension.get());
         presaleId.set(newId);
 
         PresalePurchase(_address, newId);
@@ -345,7 +352,7 @@ public class PresaleMultiToken extends IRC31Basic {
         Context.require(newId.compareTo(MAX_PRESALES) <= 0, "All items have been minted");
 
         super._mint(treasury(), newId, BigInteger.ONE);
-        super._setTokenURI(newId, baseUri.get()+newId.toString());
+        super._setTokenURI(newId, baseUri.get()+newId.toString()+fileExtension.get());
         presaleId.set(newId);
     }
 
