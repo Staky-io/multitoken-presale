@@ -37,7 +37,8 @@ class Command:
     @staticmethod
     def deploy(args):
         config = Config(args.endpoint, args.keystore.name)
-        params = {'TOBEREVEALED_URI':'q','MAX_PRESALES':1000}
+        # params = {'MAX_PRESALES':1000, 'NAME': 'Teesr', 'BASE_URI': 'ok', '_mintLimit': 2, '_wlEnabled': "0x1" }
+        # params = {'MAX_PRESALES':1000, 'NAME': 'Teesr', 'BASE_URI': 'ok', '_presalePrice': 1, '_mintLimit': 0, '_wlEnabled': True, '_wlMintLimit': 0, '_wlPrice': 0 }
         deploy(config, args.contract, args.to, params, verbose=print)
 
 

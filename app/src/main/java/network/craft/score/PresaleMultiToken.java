@@ -52,15 +52,15 @@ public class PresaleMultiToken extends IRC31Basic {
     private final VarDB<String> fileExtension = Context.newVarDB("file_extension", String.class);
     private final EnumerableSet<Address> whitelist = new EnumerableSet<>("whitelist", Address.class);
 
-    public PresaleMultiToken(String NAME, int MAX_PRESALES, String BASE_URI, BigInteger _presalePrice, BigInteger _mintLimit, Boolean _wlEnabled, BigInteger _wlMintLimit, BigInteger _wlPrice) {
+    public PresaleMultiToken(String NAME, int MAX_PRESALES, String BASE_URI, int _presalePrice, int _mintLimit, boolean _wlEnabled, int _wlMintLimit, int _wlPrice) {
         this.NAME = NAME;
         this.MAX_PRESALES = BigInteger.valueOf(MAX_PRESALES);
         baseUri.set(BASE_URI);
-        mintLimit.set(_mintLimit);
-        presalePrice.set(_presalePrice);
+        mintLimit.set(BigInteger.valueOf(_mintLimit));
+        presalePrice.set(BigInteger.valueOf(_presalePrice));
         requireWhitelist.set(_wlEnabled);
-        wlMintLimit.set(_wlMintLimit);
-        wlPresalePrice.set(_wlPrice);
+        wlMintLimit.set(BigInteger.valueOf(_wlMintLimit));
+        wlPresalePrice.set(BigInteger.valueOf(_wlPrice));
     }
 
     @External(readonly=true)
@@ -131,7 +131,7 @@ public class PresaleMultiToken extends IRC31Basic {
 
     @External(readonly=true)
     public String fileExtension() {
-        return fileExtension.getOrDefault(".json");
+        return fileExtension.get();
     }
 
     @External
